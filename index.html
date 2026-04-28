@@ -1,0 +1,2488 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MISSION TERMINAL — PROJECT ASCENT</title>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Rajdhani:wght@400;500;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #070a0f;
+  --surface: #0c1018;
+  --panel: #101520;
+  --panel2: #141b28;
+  --border: #1c2840;
+  --border2: #243050;
+  --text: #8faac8;
+  --white: #ddeeff;
+  --dim: #3a5070;
+
+  /* timer states */
+  --timer-color: #00e87a;
+  --timer-glow: rgba(0,232,122,0.3);
+  --timer-bg: rgba(0,232,122,0.06);
+  --timer-border: rgba(0,232,122,0.25);
+  --header-accent: #00e87a;
+
+  --teal: #00c9b8;
+  --blue: #3a7fff;
+  --amber: #f0a020;
+  --purple: #9060ff;
+  --red: #ff3040;
+  --green: #00e87a;
+}
+
+/* TIMER STATE OVERRIDES */
+body.yellow {
+  --timer-color: #f0c030;
+  --timer-glow: rgba(240,192,48,0.3);
+  --timer-bg: rgba(240,192,48,0.06);
+  --timer-border: rgba(240,192,48,0.3);
+  --header-accent: #f0c030;
+}
+body.red {
+  --timer-color: #ff3040;
+  --timer-glow: rgba(255,48,64,0.4);
+  --timer-bg: rgba(255,48,64,0.07);
+  --timer-border: rgba(255,48,64,0.3);
+  --header-accent: #ff3040;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Rajdhani', sans-serif;
+  font-size: 16px;
+  line-height: 1.6;
+  min-height: 100vh;
+}
+
+/* SCANLINE EFFECT */
+body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    rgba(0,0,0,0.03) 2px,
+    rgba(0,0,0,0.03) 4px
+  );
+  pointer-events: none;
+  z-index: 9999;
+}
+
+/* ═══════════════════════════════════
+   TIMER BAR — DUAL STACKED
+═══════════════════════════════════ */
+#timerBar {
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  z-index: 1000;
+  background: #070a0f;
+  border-bottom: 1px solid #1c2840;
+  backdrop-filter: blur(8px);
+  padding: 0;
+}
+#timerGrid {
+  display: grid;
+  grid-template-columns: 1fr 1px 1fr;
+  align-items: stretch;
+}
+.timer-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 9px 18px;
+  gap: 10px;
+  transition: background 1.2s;
+  min-width: 0;  /* allow children to shrink */
+}
+.timer-divider-v {
+  background: #1c2840;
+  width: 1px;
+}
+.timer-divider {
+  /* legacy horizontal divider — no longer used but kept for safety */
+  display: none;
+}
+.tb-label {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 12px;
+  letter-spacing: 2px;
+  opacity: 0.85;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: color 1.2s;
+}
+.tb-count {
+  font-family: 'Orbitron', monospace;
+  font-size: clamp(14px, 1.8vw, 22px);
+  font-weight: 900;
+  letter-spacing: 2px;
+  text-align: center;
+  flex: 1;
+  min-width: 0;
+  transition: color 1.2s, text-shadow 1.2s;
+  animation: pulse 2s ease-in-out infinite;
+  white-space: nowrap;
+  overflow: hidden;
+}
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.85; }
+}
+.tb-date {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 12px;
+  letter-spacing: 1.5px;
+  opacity: 0.65;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: color 1.2s;
+}
+
+/* Unit letters (d h m s) — small, dim, mono so digits dominate */
+.tb-unit {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 0.5em;
+  font-weight: 400;
+  opacity: 0.55;
+  letter-spacing: 1px;
+  margin: 0 4px 0 1px;
+  text-transform: lowercase;
+}
+
+/* Phase strip — appears below timer rows when a phase is active */
+#phaseStrip {
+  padding: 5px 24px;
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 10px;
+  letter-spacing: 4px;
+  text-align: center;
+  color: var(--teal);
+  background: rgba(0,201,184,0.05);
+  border-top: 1px solid var(--border);
+  text-transform: uppercase;
+}
+.phase-prefix {
+  color: var(--dim);
+  margin-right: 6px;
+}
+#phaseTag {
+  color: var(--white);
+  font-weight: 700;
+}
+
+/* PER-ROW COLOR STATES */
+.timer-row.green .tb-label,
+.timer-row.green .tb-count,
+.timer-row.green .tb-date {
+  color: #00e87a;
+}
+.timer-row.green .tb-count {
+  text-shadow: 0 0 30px rgba(0,232,122,0.5), 0 0 60px rgba(0,232,122,0.2);
+}
+.timer-row.yellow .tb-label,
+.timer-row.yellow .tb-count,
+.timer-row.yellow .tb-date {
+  color: #f0c030;
+}
+.timer-row.yellow .tb-count {
+  text-shadow: 0 0 30px rgba(240,192,48,0.6), 0 0 60px rgba(240,192,48,0.25);
+}
+.timer-row.red .tb-label,
+.timer-row.red .tb-count,
+.timer-row.red .tb-date {
+  color: #ff3040;
+}
+.timer-row.red .tb-count {
+  text-shadow: 0 0 30px rgba(255,48,64,0.7), 0 0 60px rgba(255,48,64,0.3);
+}
+.timer-row.flashing .tb-count {
+  animation: flashCount 0.45s infinite alternate;
+}
+.timer-row.flashing {
+  animation: flashRow 0.45s infinite alternate;
+}
+@keyframes flashCount {
+  from { opacity: 1; text-shadow: 0 0 30px rgba(255,48,64,0.8), 0 0 80px rgba(255,48,64,0.4); }
+  to { opacity: 0.3; text-shadow: none; }
+}
+@keyframes flashRow {
+  from { background: rgba(255,48,64,0.04); }
+  to { background: rgba(255,48,64,0.14); }
+}
+
+/* ═══════════════════════════════════
+   MAIN LAYOUT
+═══════════════════════════════════ */
+.page {
+  max-width: 920px;
+  margin: 0 auto;
+  padding: 95px 20px 100px;
+}
+
+/* ═══════════════════════════════════
+   BOOT SCREEN / NAME GATE
+═══════════════════════════════════ */
+#bootScreen {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 20px;
+  position: relative;
+}
+.boot-logo {
+  font-family: 'Orbitron', monospace;
+  font-size: clamp(32px, 7vw, 64px);
+  font-weight: 900;
+  color: var(--white);
+  letter-spacing: 4px;
+  text-align: center;
+  margin-bottom: 8px;
+  animation: fadeUp 0.8s ease both;
+}
+.boot-sub {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 13px;
+  letter-spacing: 6px;
+  color: var(--teal);
+  text-align: center;
+  margin-bottom: 48px;
+  animation: fadeUp 0.8s 0.2s ease both;
+  opacity: 0;
+}
+.boot-transmission {
+  background: var(--surface);
+  border: 1px solid var(--border2);
+  border-radius: 8px;
+  padding: 32px 36px;
+  max-width: 560px;
+  width: 100%;
+  animation: fadeUp 0.8s 0.4s ease both;
+  opacity: 0;
+  position: relative;
+  overflow: hidden;
+}
+.boot-transmission::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, var(--teal), transparent);
+}
+.bt-label {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 10px;
+  letter-spacing: 5px;
+  color: var(--teal);
+  margin-bottom: 16px;
+  display: block;
+}
+.bt-message {
+  font-size: 15px;
+  color: var(--text);
+  line-height: 1.75;
+  margin-bottom: 28px;
+  font-style: italic;
+}
+.bt-message strong { color: var(--white); font-style: normal; }
+.name-label {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 11px;
+  letter-spacing: 4px;
+  color: var(--dim);
+  display: block;
+  margin-bottom: 10px;
+  text-transform: uppercase;
+}
+#crewNameInput {
+  width: 100%;
+  background: var(--panel2);
+  border: 1px solid var(--border2);
+  border-radius: 4px;
+  color: var(--white);
+  font-family: 'Orbitron', monospace;
+  font-size: 18px;
+  font-weight: 700;
+  padding: 14px 18px;
+  letter-spacing: 2px;
+  outline: none;
+  transition: border-color 0.2s, box-shadow 0.2s;
+  margin-bottom: 16px;
+}
+#crewNameInput:focus {
+  border-color: var(--teal);
+  box-shadow: 0 0 20px rgba(0,201,184,0.15);
+}
+#crewNameInput::placeholder {
+  color: var(--dim);
+  font-size: 14px;
+  letter-spacing: 1px;
+}
+#bootBtn {
+  width: 100%;
+  background: var(--teal);
+  color: #001a18;
+  border: none;
+  border-radius: 4px;
+  font-family: 'Orbitron', monospace;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 3px;
+  padding: 14px;
+  cursor: pointer;
+  transition: background 0.2s, transform 0.1s;
+}
+#bootBtn:hover { background: #00e8d4; }
+#bootBtn:active { transform: scale(0.98); }
+
+/* ═══════════════════════════════════
+   MAIN TERMINAL (hidden until login)
+═══════════════════════════════════ */
+#mainTerminal { display: none; }
+
+/* TERMINAL HEADER */
+.terminal-header {
+  margin-bottom: 40px;
+  padding-bottom: 24px;
+  border-bottom: 1px solid var(--border);
+  position: relative;
+}
+.th-eyebrow {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 11px;
+  letter-spacing: 5px;
+  color: var(--dim);
+  margin-bottom: 8px;
+}
+.th-title {
+  font-family: 'Orbitron', monospace;
+  font-size: clamp(22px, 4vw, 38px);
+  font-weight: 900;
+  color: var(--white);
+  letter-spacing: 2px;
+  margin-bottom: 4px;
+}
+.th-crew {
+  font-family: 'Orbitron', monospace;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--teal);
+  letter-spacing: 3px;
+}
+#crewNameDisplay { color: var(--white); }
+
+/* ═══════════════════════════════════
+   MISSION BRIEF PANEL
+═══════════════════════════════════ */
+.mission-brief {
+  background: var(--surface);
+  border: 1px solid var(--border2);
+  border-radius: 8px;
+  padding: 28px 32px;
+  margin-bottom: 40px;
+  position: relative;
+  overflow: hidden;
+}
+.mission-brief::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, var(--red), var(--amber), transparent);
+}
+.mb-label {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 10px;
+  letter-spacing: 5px;
+  color: var(--red);
+  margin-bottom: 14px;
+  display: block;
+}
+.mb-text {
+  font-size: 16px;
+  line-height: 1.8;
+  color: var(--text);
+  font-style: italic;
+}
+.mb-text strong { color: var(--white); font-style: normal; }
+
+/* ═══════════════════════════════════
+   UNIT SECTIONS
+═══════════════════════════════════ */
+.unit {
+  margin-bottom: 32px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+  transition: border-color 0.3s;
+}
+.unit:hover { border-color: var(--border2); }
+
+.unit-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 20px 24px;
+  cursor: pointer;
+  user-select: none;
+  position: relative;
+  background: var(--panel);
+  transition: background 0.2s;
+}
+.unit-header:hover { background: var(--panel2); }
+
+.unit-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  flex-shrink: 0;
+}
+
+.unit-title-group { flex: 1; }
+.unit-number {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 10px;
+  letter-spacing: 4px;
+  margin-bottom: 3px;
+}
+.unit-name {
+  font-family: 'Orbitron', monospace;
+  font-size: clamp(13px, 2vw, 17px);
+  font-weight: 700;
+  color: var(--white);
+  letter-spacing: 1px;
+}
+
+.unit-status {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 11px;
+  letter-spacing: 2px;
+  padding: 4px 12px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
+.unit-chevron {
+  font-size: 12px;
+  color: var(--dim);
+  transition: transform 0.3s;
+  flex-shrink: 0;
+}
+.unit.open .unit-chevron { transform: rotate(180deg); }
+
+.unit-body {
+  display: none;
+  padding: 0 24px 24px;
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+}
+.unit.open .unit-body { display: block; }
+
+/* unit color themes */
+.unit-u1 .unit-icon { background: rgba(0,201,184,0.12); }
+.unit-u1 .unit-number { color: var(--teal); }
+.unit-u1 .unit-status { background: rgba(0,201,184,0.1); color: var(--teal); border: 1px solid rgba(0,201,184,0.25); }
+.unit-u1 .unit-header { border-left: 3px solid var(--teal); }
+
+.unit-u2 .unit-icon { background: rgba(58,127,255,0.12); }
+.unit-u2 .unit-number { color: var(--blue); }
+.unit-u2 .unit-status { background: rgba(58,127,255,0.1); color: var(--blue); border: 1px solid rgba(58,127,255,0.25); }
+.unit-u2 .unit-header { border-left: 3px solid var(--blue); }
+
+.unit-u3 .unit-icon { background: rgba(144,96,255,0.12); }
+.unit-u3 .unit-number { color: var(--purple); }
+.unit-u3 .unit-status { background: rgba(144,96,255,0.1); color: var(--purple); border: 1px solid rgba(144,96,255,0.25); }
+.unit-u3 .unit-header { border-left: 3px solid var(--purple); }
+
+.unit-u4 .unit-icon { background: rgba(240,160,32,0.12); }
+.unit-u4 .unit-number { color: var(--amber); }
+.unit-u4 .unit-status { background: rgba(240,160,32,0.1); color: var(--amber); border: 1px solid rgba(240,160,32,0.25); }
+.unit-u4 .unit-header { border-left: 3px solid var(--amber); }
+
+.unit-u5 .unit-icon { background: rgba(0,232,122,0.1); }
+.unit-u5 .unit-number { color: var(--green); }
+.unit-u5 .unit-status { background: rgba(0,232,122,0.08); color: var(--green); border: 1px solid rgba(0,232,122,0.2); }
+.unit-u5 .unit-header { border-left: 3px solid var(--green); }
+
+.unit-u6 .unit-icon { background: rgba(255,48,64,0.1); }
+.unit-u6 .unit-number { color: var(--red); }
+.unit-u6 .unit-status { background: rgba(255,48,64,0.08); color: var(--red); border: 1px solid rgba(255,48,64,0.2); }
+.unit-u6 .unit-header { border-left: 3px solid var(--red); }
+
+.unit-u7 .unit-icon { background: rgba(255,48,64,0.15); }
+.unit-u7 .unit-number { color: var(--red); }
+.unit-u7 .unit-status { background: rgba(255,48,64,0.12); color: var(--red); border: 1px solid rgba(255,48,64,0.3); }
+.unit-u7 .unit-header { border-left: 3px solid var(--red); }
+
+/* ═══════════════════════════════════
+   UNIT BODY COMPONENTS
+═══════════════════════════════════ */
+
+/* Lore line */
+.unit-lore {
+  font-style: italic;
+  font-size: 14px;
+  color: #607090;
+  padding: 16px 0 20px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 20px;
+  line-height: 1.7;
+}
+
+/* Checklist */
+.checklist-head {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 10px;
+  letter-spacing: 4px;
+  color: var(--dim);
+  margin-bottom: 12px;
+  text-transform: uppercase;
+}
+.checklist { list-style: none; margin-bottom: 24px; }
+.checklist li {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 10px 14px;
+  border-radius: 5px;
+  margin-bottom: 4px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+}
+.checklist li:hover { background: var(--panel2); border-color: var(--border2); }
+.checklist li.checked {
+  background: rgba(0,232,122,0.05);
+  border-color: rgba(0,232,122,0.2);
+  color: var(--green);
+}
+.check-box {
+  width: 20px;
+  height: 20px;
+  border-radius: 3px;
+  border: 2px solid var(--border2);
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  margin-top: 1px;
+  transition: background 0.15s, border-color 0.15s;
+}
+.checklist li.checked .check-box {
+  background: var(--green);
+  border-color: var(--green);
+  color: #001a0a;
+}
+
+/* Crew Sync Gate */
+.sync-gate {
+  background: linear-gradient(135deg, rgba(240,160,32,0.07), rgba(255,48,64,0.04));
+  border: 1px solid rgba(240,160,32,0.3);
+  border-radius: 6px;
+  padding: 18px 20px;
+  margin: 20px 0;
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+}
+.sg-icon { font-size: 24px; flex-shrink: 0; }
+.sg-body .sg-head {
+  font-family: 'Orbitron', monospace;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  color: var(--amber);
+  margin-bottom: 6px;
+}
+.sg-body p { font-size: 14px; color: var(--text); line-height: 1.6; }
+.sg-body strong { color: var(--white); }
+
+/* Filename Generator */
+.filename-gate {
+  background: var(--panel);
+  border: 1px solid var(--border2);
+  border-radius: 6px;
+  padding: 20px;
+  margin: 20px 0;
+}
+.fg-head {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 10px;
+  letter-spacing: 4px;
+  color: var(--blue);
+  margin-bottom: 14px;
+  text-transform: uppercase;
+}
+.fg-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+.fg-select, .fg-version {
+  background: var(--panel2);
+  border: 1px solid var(--border2);
+  border-radius: 4px;
+  color: var(--white);
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 13px;
+  padding: 8px 12px;
+  outline: none;
+  cursor: pointer;
+}
+.fg-select:focus, .fg-version:focus { border-color: var(--blue); }
+.fg-output {
+  background: var(--bg);
+  border: 1px solid var(--border2);
+  border-radius: 4px;
+  padding: 12px 16px;
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 15px;
+  color: var(--teal);
+  letter-spacing: 1px;
+  margin-top: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.fg-copy {
+  background: none;
+  border: 1px solid var(--border2);
+  border-radius: 3px;
+  color: var(--dim);
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 11px;
+  letter-spacing: 2px;
+  padding: 5px 12px;
+  cursor: pointer;
+  transition: color 0.2s, border-color 0.2s;
+  white-space: nowrap;
+}
+.fg-copy:hover { color: var(--teal); border-color: var(--teal); }
+
+/* Placeholder content block */
+.placeholder-block {
+  background: repeating-linear-gradient(
+    45deg,
+    var(--panel),
+    var(--panel) 10px,
+    var(--surface) 10px,
+    var(--surface) 20px
+  );
+  border: 1px dashed var(--border2);
+  border-radius: 6px;
+  padding: 24px;
+  text-align: center;
+  margin: 16px 0;
+}
+.placeholder-block p {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 12px;
+  letter-spacing: 3px;
+  color: var(--dim);
+  text-transform: uppercase;
+}
+
+/* ═══════════════════════════════════
+   CONTENT BLOCK — generic section header
+═══════════════════════════════════ */
+.content-section {
+  margin: 28px 0 20px;
+}
+.content-section-head {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 10px;
+  letter-spacing: 4px;
+  color: var(--dim);
+  margin-bottom: 14px;
+  text-transform: uppercase;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.content-section-head::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+.content-section-intro {
+  font-size: 14px;
+  color: var(--text);
+  line-height: 1.7;
+  margin-bottom: 16px;
+  padding-left: 2px;
+}
+.content-section-intro strong { color: var(--white); }
+
+/* ═══ VOCABULARY GLOSSARY ═══ */
+.glossary {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.glossary-term {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 12px 14px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+  user-select: none;
+}
+.glossary-term:hover {
+  background: var(--panel2);
+  border-color: var(--border2);
+}
+.glossary-term.open {
+  background: rgba(0,201,184,0.05);
+  border-color: rgba(0,201,184,0.3);
+}
+.gt-word {
+  font-family: 'Orbitron', monospace;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--white);
+  letter-spacing: 1.5px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.gt-word::after {
+  content: '+';
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 18px;
+  color: var(--dim);
+  transition: transform 0.2s;
+}
+.glossary-term.open .gt-word::after {
+  content: '−';
+  color: var(--teal);
+}
+.gt-def {
+  font-size: 13px;
+  color: var(--text);
+  line-height: 1.6;
+  margin-top: 0;
+  max-height: 0;
+  overflow: hidden;
+  transition: max-height 0.25s ease, margin-top 0.25s ease;
+}
+.glossary-term.open .gt-def {
+  max-height: 200px;
+  margin-top: 8px;
+}
+
+/* ═══ RESEARCH PROMPTS ═══ */
+.research-prompt {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--teal);
+  border-radius: 5px;
+  padding: 16px 18px;
+  margin-bottom: 10px;
+}
+.rp-num {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 10px;
+  letter-spacing: 3px;
+  color: var(--teal);
+  margin-bottom: 6px;
+}
+.rp-question {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--white);
+  line-height: 1.5;
+  margin-bottom: 10px;
+}
+.rp-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.rp-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--panel2);
+  border: 1px solid var(--border2);
+  border-radius: 3px;
+  padding: 6px 12px;
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 11px;
+  letter-spacing: 1.5px;
+  color: var(--teal);
+  text-decoration: none;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+.rp-link:hover {
+  background: rgba(0,201,184,0.08);
+  border-color: var(--teal);
+  color: var(--white);
+}
+.rp-link::before {
+  content: '↗';
+  font-size: 10px;
+  opacity: 0.7;
+}
+
+/* ═══ CARGO BRIEF ═══ */
+.cargo-brief {
+  background: linear-gradient(135deg, rgba(0,201,184,0.04), rgba(58,127,255,0.03));
+  border: 1px solid rgba(0,201,184,0.2);
+  border-radius: 6px;
+  padding: 22px 24px;
+  margin: 8px 0 16px;
+}
+.cargo-head {
+  font-family: 'Orbitron', monospace;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  color: var(--white);
+  margin-bottom: 6px;
+}
+.cargo-sub {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 11px;
+  letter-spacing: 3px;
+  color: var(--teal);
+  margin-bottom: 16px;
+}
+.cargo-intro {
+  font-size: 14px;
+  color: var(--text);
+  line-height: 1.7;
+  margin-bottom: 18px;
+  font-style: italic;
+}
+.cargo-intro strong { color: var(--white); font-style: normal; }
+.cargo-constraints {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.cargo-constraints li {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 10px 0;
+  border-top: 1px solid rgba(0,201,184,0.12);
+  font-size: 14px;
+  color: var(--text);
+  line-height: 1.55;
+}
+.cargo-constraints li:first-child { border-top: none; }
+.cargo-constraints li strong { color: var(--white); }
+.cc-tag {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 10px;
+  letter-spacing: 2px;
+  color: var(--teal);
+  background: rgba(0,201,184,0.08);
+  border: 1px solid rgba(0,201,184,0.25);
+  border-radius: 3px;
+  padding: 3px 8px;
+  flex-shrink: 0;
+  margin-top: 1px;
+  white-space: nowrap;
+}
+
+/* ═══ SPEC CALLOUT — for design constraints, dimensions, etc. ═══ */
+.spec-block {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--blue);
+  border-radius: 5px;
+  padding: 18px 20px;
+  margin-bottom: 12px;
+}
+.spec-title {
+  font-family: 'Orbitron', monospace;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--white);
+  letter-spacing: 1.5px;
+  margin-bottom: 4px;
+}
+.spec-sub {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 10px;
+  letter-spacing: 3px;
+  color: var(--blue);
+  margin-bottom: 14px;
+}
+.spec-body {
+  font-size: 14px;
+  color: var(--text);
+  line-height: 1.6;
+  margin-bottom: 14px;
+}
+.spec-body strong { color: var(--white); }
+.spec-dims {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 6px;
+}
+.spec-dims li {
+  background: var(--panel2);
+  border: 1px solid var(--border2);
+  border-radius: 4px;
+  padding: 8px 12px;
+  font-size: 13px;
+  color: var(--text);
+}
+.spec-dims li strong { color: var(--white); display: block; font-size: 11px; font-family: 'Share Tech Mono', monospace; letter-spacing: 2px; margin-bottom: 2px; opacity: 0.7; }
+
+/* Generic action button (e.g. "Open Tinkercad") */
+.action-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--panel2);
+  border: 1px solid var(--blue);
+  border-radius: 4px;
+  padding: 10px 18px;
+  font-family: 'Orbitron', monospace;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--blue);
+  text-decoration: none;
+  letter-spacing: 2px;
+  transition: background 0.15s, color 0.15s;
+}
+.action-button:hover {
+  background: var(--blue);
+  color: var(--bg);
+}
+.action-button::before {
+  content: '↗';
+  font-size: 11px;
+}
+
+/* ═══ PAPER STRIP CALLOUT ═══ */
+.strip-callout {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 16px;
+  margin: 14px 0 8px;
+  background: rgba(240,160,32,0.04);
+  border: 1px solid rgba(240,160,32,0.25);
+  border-left: 3px solid var(--amber);
+  border-radius: 4px;
+}
+.strip-callout .sc-icon {
+  font-size: 18px;
+  flex-shrink: 0;
+  margin-top: -1px;
+  filter: grayscale(0.3);
+}
+.strip-callout .sc-body {
+  flex: 1;
+  min-width: 0;
+}
+.strip-callout .sc-title {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 10px;
+  letter-spacing: 2.5px;
+  color: var(--amber);
+  margin-bottom: 4px;
+  text-transform: uppercase;
+}
+.strip-callout .sc-labels {
+  font-size: 13px;
+  color: var(--text);
+  line-height: 1.55;
+}
+.strip-callout .sc-labels strong {
+  color: var(--white);
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 11px;
+  letter-spacing: 2px;
+  display: inline-block;
+  padding: 1px 6px;
+  margin: 1px 3px;
+  background: rgba(240,160,32,0.1);
+  border: 1px solid rgba(240,160,32,0.3);
+  border-radius: 3px;
+}
+
+/* ═══ STANDING ANSWER RULE BOX ═══ */
+.answer-rule {
+  background: linear-gradient(135deg, rgba(240,160,32,0.04), rgba(255,48,64,0.03));
+  border: 1px solid rgba(240,160,32,0.2);
+  border-radius: 6px;
+  padding: 18px 22px;
+  margin: 16px 0;
+}
+.answer-rule .ar-head {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 10px;
+  letter-spacing: 3px;
+  color: var(--amber);
+  margin-bottom: 10px;
+  text-transform: uppercase;
+}
+.answer-rule p {
+  font-size: 14px;
+  color: var(--text);
+  line-height: 1.7;
+  margin: 0;
+}
+.answer-rule p strong {
+  color: var(--white);
+}
+.answer-rule .ar-divider {
+  height: 1px;
+  background: rgba(240,160,32,0.15);
+  margin: 12px 0;
+}
+
+/* Terminal footer / version stamp */
+.terminal-footer {
+  margin-top: 60px;
+  padding-top: 20px;
+  border-top: 1px solid var(--border);
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 10px;
+  letter-spacing: 3px;
+  color: var(--dim);
+  text-align: center;
+  opacity: 0.6;
+  text-transform: uppercase;
+}
+.terminal-footer .tf-sep {
+  margin: 0 12px;
+  opacity: 0.5;
+}
+
+/* ═══ LOCKED UNIT STATE ═══ */
+.unit.locked .unit-header {
+  cursor: not-allowed;
+  opacity: 0.55;
+  border-left-style: dashed !important;
+  background: rgba(8,12,20,0.5);
+}
+.unit.locked .unit-header:hover {
+  background: rgba(8,12,20,0.5);
+}
+.unit.locked .unit-chevron {
+  opacity: 0.25;
+}
+.unit.locked .unit-body {
+  display: none !important;
+}
+.unit.locked .unit-status {
+  background: rgba(255,255,255,0.04) !important;
+  color: var(--dim) !important;
+  border: 1px solid var(--border) !important;
+}
+.unit-locked-summary {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 14px 22px;
+  background: var(--panel);
+  border-top: 1px solid var(--border);
+  font-family: 'Share Tech Mono', monospace;
+}
+.unit-locked-summary .uls-icon {
+  font-size: 14px;
+  opacity: 0.5;
+  margin-top: 1px;
+  flex-shrink: 0;
+}
+.unit-locked-summary .uls-body {
+  flex: 1;
+  min-width: 0;
+}
+.unit-locked-summary .uls-summary {
+  font-size: 13px;
+  color: var(--text);
+  letter-spacing: 1px;
+  opacity: 0.75;
+  margin-bottom: 4px;
+}
+.unit-locked-summary .uls-unlock {
+  font-size: 10px;
+  color: var(--teal);
+  letter-spacing: 2.5px;
+  opacity: 0.85;
+}
+
+/* Progress bar */
+.unit-progress {
+  height: 3px;
+  background: var(--border);
+  border-radius: 2px;
+  margin-top: 16px;
+  overflow: hidden;
+}
+.unit-progress-fill {
+  height: 100%;
+  background: var(--green);
+  border-radius: 2px;
+  width: 0%;
+  transition: width 0.4s ease;
+}
+
+/* ═══════════════════════════════════
+   ANIMATIONS
+═══════════════════════════════════ */
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes terminalIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+#mainTerminal.visible {
+  animation: terminalIn 0.6s ease both;
+}
+
+/* ═══════════════════════════════════
+   SCROLLBAR
+═══════════════════════════════════ */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: var(--bg); }
+::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--dim); }
+</style>
+</head>
+<body>
+
+<!-- ═══════════════ TIMER BAR ═══════════════ -->
+<div id="timerBar">
+  <div id="timerGrid">
+    <div class="timer-row" id="timerRowA">
+      <div class="tb-label" id="labelA">⬡ SYSTEMS CHECK</div>
+      <div class="tb-count" id="countdownA">CALCULATING...</div>
+      <div class="tb-date">TUE · MAY 12 · 12:45 PM</div>
+    </div>
+    <div class="timer-divider-v"></div>
+    <div class="timer-row" id="timerRowB">
+      <div class="tb-label" id="labelB">🚀 LAUNCH WINDOW</div>
+      <div class="tb-count" id="countdownB">CALCULATING...</div>
+      <div class="tb-date">WED · MAY 20 · 11:00 AM</div>
+    </div>
+  </div>
+  <div id="phaseStrip" style="display:none;">
+    <span class="phase-prefix">// PHASE:</span> <span id="phaseTag">PAYLOAD DESIGN</span>
+  </div>
+</div>
+
+<!-- ═══════════════ BOOT / NAME GATE ═══════════════ -->
+<div id="bootScreen">
+  <div class="boot-logo">PROJECT<br>ASCENT</div>
+  <div class="boot-sub">CREW MISSION TERMINAL · KENTS HILL DIGITAL DESIGN</div>
+
+  <div class="boot-transmission">
+    <span class="bt-label">// INCOMING TRANSMISSION — PRIORITY ALPHA</span>
+    <p class="bt-message">
+      The station is losing pressure. We have one shot at a resupply launch. The fabrication bay is online. <strong>Your crew is all we have.</strong> Identify yourself to access mission files.
+    </p>
+    <label class="name-label" for="crewNameInput">// CREW MEMBER DESIGNATION</label>
+    <input type="text" id="crewNameInput" placeholder="First name only" maxlength="20" autocomplete="off" />
+    <button id="bootBtn" onclick="initTerminal()">⬡ &nbsp; ACCESS MISSION TERMINAL</button>
+  </div>
+</div>
+
+<!-- ═══════════════ MAIN TERMINAL ═══════════════ -->
+<div id="mainTerminal">
+<div class="page">
+
+  <!-- TERMINAL HEADER -->
+  <div class="terminal-header">
+    <div class="th-eyebrow">// MISSION TERMINAL · ACTIVE SESSION</div>
+    <div class="th-title">PROJECT ASCENT</div>
+    <div class="th-crew">CREW: <span id="crewNameDisplay"></span></div>
+  </div>
+
+  <!-- MISSION BRIEF -->
+  <div class="mission-brief">
+    <span class="mb-label">// MISSION BRIEF — EYES ONLY</span>
+    <p class="mb-text">
+      The station is failing. <strong>One resupply rocket. One launch window. No second chances.</strong> You will research, design, build, and fly. The payload must survive. Every decision you make in this room is a real decision. Work fast. Work right. The clock is running.
+    </p>
+  </div>
+
+  <!-- ═══ UNIT 1 ═══ -->
+  <div class="unit unit-u1" id="unit1">
+    <div class="unit-header" onclick="toggleUnit('unit1')">
+      <div class="unit-icon">🔬</div>
+      <div class="unit-title-group">
+        <div class="unit-number">UNIT 01</div>
+        <div class="unit-name">BRIEFING · RESEARCH · CARGO</div>
+      </div>
+      <div class="unit-status">OPEN</div>
+      <div class="unit-chevron">▼</div>
+    </div>
+    <div class="unit-body">
+      <div class="unit-lore">"The station sent us partial data. Enough to know what kind of rocket survived the last mission. Not enough to build one blind. Start there."</div>
+
+      <!-- ═══ STANDING ANSWER RULE ═══ -->
+      <div class="answer-rule">
+        <div class="ar-head">// HOW TO ANSWER · READ ONCE · APPLIES EVERYWHERE</div>
+        <p>Some answers in here go on <strong>paper strips</strong> that you hand to your teacher. Your answer has to <strong>show you understand</strong> — not just use the word.</p>
+        <div class="ar-divider"></div>
+        <p>"Skin is on your body" doesn't show anything. <strong>"Skin keeps water out, keeps germs out, and tells your brain when something's hot."</strong> That shows you understand. <strong>Write the second kind. We'll know.</strong></p>
+      </div>
+
+      <div class="checklist-head">// REQUIRED COMPLETIONS</div>
+      <ul class="checklist" id="cl1">
+        <li onclick="toggleCheck(this)"><span class="check-box"></span> Vocabulary reviewed — you can use all six terms in a sentence</li>
+        <li onclick="toggleCheck(this)"><span class="check-box"></span> All four research questions answered in your design log</li>
+        <li onclick="toggleCheck(this)"><span class="check-box"></span> Cargo manifest understood — all four items accounted for</li>
+        <li onclick="toggleCheck(this)"><span class="check-box"></span> Payload built from craft materials — fits inside cut 2L bottle</li>
+        <li onclick="toggleCheck(this)"><span class="check-box"></span> Drop test passed (standing height, hard floor)</li>
+        <li onclick="toggleCheck(this)"><span class="check-box"></span> Crew sync completed</li>
+      </ul>
+
+      <!-- ═══ VOCABULARY ═══ -->
+      <div class="content-section">
+        <div class="content-section-head">// MISSION VOCABULARY · TAP TO REVEAL</div>
+        <div class="content-section-intro">
+          Six terms. You'll use every one of them when you defend a design decision. <strong>If you can't use a word in a sentence, you don't know it yet.</strong>
+        </div>
+        <div class="glossary">
+          <div class="glossary-term" onclick="this.classList.toggle('open')">
+            <div class="gt-word">AERODYNAMIC</div>
+            <div class="gt-def">Shaped to move through air with minimum resistance. A nose cone is aerodynamic. A flat board is not.</div>
+          </div>
+          <div class="glossary-term" onclick="this.classList.toggle('open')">
+            <div class="gt-word">PAYLOAD</div>
+            <div class="gt-def">The cargo a rocket carries. The reason the rocket exists. Everything else on your rocket is there to deliver this safely.</div>
+          </div>
+          <div class="glossary-term" onclick="this.classList.toggle('open')">
+            <div class="gt-word">FAIRING</div>
+            <div class="gt-def">A smooth structural shell that protects what's underneath and reduces drag. On your rocket, the 3D-printed collar that holds the fins.</div>
+          </div>
+          <div class="glossary-term" onclick="this.classList.toggle('open')">
+            <div class="gt-word">APOGEE</div>
+            <div class="gt-def">The highest point a rocket reaches before falling back. Maximum altitude. The number you're trying to make bigger.</div>
+          </div>
+          <div class="glossary-term" onclick="this.classList.toggle('open')">
+            <div class="gt-word">DRAG</div>
+            <div class="gt-def">The force of air pushing back against the rocket as it flies. More drag means lower apogee. Shape, surface, and size all change drag.</div>
+          </div>
+          <div class="glossary-term" onclick="this.classList.toggle('open')">
+            <div class="gt-word">STABILITY</div>
+            <div class="gt-def">A rocket's tendency to fly straight instead of tumbling. Comes from fin placement, weight distribution, and balance. Without it, you don't have a rocket — you have shrapnel.</div>
+          </div>
+        </div>
+        <div class="strip-callout">
+          <div class="sc-icon">📄</div>
+          <div class="sc-body">
+            <div class="sc-title">// 6 PAPER STRIPS REQUIRED · ONE PER TERM ABOVE</div>
+            <div class="sc-labels">Get one strip for each: <strong>AERODYNAMIC</strong> <strong>PAYLOAD</strong> <strong>FAIRING</strong> <strong>APOGEE</strong> <strong>DRAG</strong> <strong>STABILITY</strong>. Hand each one to your teacher when done.</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══ RESEARCH DOSSIER ═══ -->
+      <div class="content-section">
+        <div class="content-section-head">// RESEARCH DOSSIER · INTEL GATHERING</div>
+        <div class="content-section-intro">
+          Four questions. Use the linked sources to start, then go deeper if you need to. <strong>Each answer goes on its own paper strip.</strong> No copy-paste — answers in your own words. The crew that builds blind doesn't fly.
+        </div>
+
+        <div class="research-prompt">
+          <div class="rp-num">// QUERY 01</div>
+          <div class="rp-question">What four forces act on a rocket in flight, and which two does <em>your</em> design have any control over?</div>
+          <div class="rp-links">
+            <a class="rp-link" href="https://www1.grc.nasa.gov/beginners-guide-to-aeronautics/flight-of-a-water-rocket/" target="_blank" rel="noopener">NASA · FLIGHT OF A WATER ROCKET</a>
+            <a class="rp-link" href="https://www1.grc.nasa.gov/beginners-guide-to-aeronautics/rocket-aerodynamics/" target="_blank" rel="noopener">NASA · ROCKET AERODYNAMICS</a>
+          </div>
+        </div>
+
+        <div class="research-prompt">
+          <div class="rp-num">// QUERY 02</div>
+          <div class="rp-question">What does the nose cone actually do? At low speeds (like ours), does its shape matter — and how much?</div>
+          <div class="rp-links">
+            <a class="rp-link" href="https://www.grc.nasa.gov/www/k-12/rocket/BottleRocket/journey103_waterrocketdrag.htm" target="_blank" rel="noopener">NASA · WATER ROCKET DRAG</a>
+            <a class="rp-link" href="https://www.sciencelearn.org.nz/resources/392-rocket-aerodynamics" target="_blank" rel="noopener">SCIENCE LEARNING HUB · ROCKET AERODYNAMICS</a>
+          </div>
+        </div>
+
+        <div class="research-prompt">
+          <div class="rp-num">// QUERY 03</div>
+          <div class="rp-question">Why do fins go on the bottom of a rocket and not the top? What happens to a rocket with no fins, or fins in the wrong place?</div>
+          <div class="rp-links">
+            <a class="rp-link" href="https://www.sciencelearn.org.nz/resources/392-rocket-aerodynamics" target="_blank" rel="noopener">SCIENCE LEARNING HUB · STABILITY</a>
+            <a class="rp-link" href="https://www1.grc.nasa.gov/beginners-guide-to-aeronautics/water-rocket/" target="_blank" rel="noopener">NASA · WATER ROCKET</a>
+          </div>
+        </div>
+
+        <div class="research-prompt">
+          <div class="rp-num">// QUERY 04</div>
+          <div class="rp-question">A bottle rocket experiences hard acceleration on launch and a real impact on landing. What's one strategy to keep fragile cargo intact through both?</div>
+          <div class="rp-links">
+            <a class="rp-link" href="https://www1.grc.nasa.gov/beginners-guide-to-aeronautics/fun-with-bottle-rockets/" target="_blank" rel="noopener">NASA · FUN WITH BOTTLE ROCKETS</a>
+            <a class="rp-link" href="https://www.nasa.gov/stem-content/rockets-educator-guide/" target="_blank" rel="noopener">NASA · ROCKETS EDUCATOR GUIDE</a>
+          </div>
+        </div>
+        <div class="strip-callout">
+          <div class="sc-icon">📄</div>
+          <div class="sc-body">
+            <div class="sc-title">// 4 PAPER STRIPS REQUIRED · ONE PER QUERY ABOVE</div>
+            <div class="sc-labels">Get one strip for each: <strong>RESEARCH 01 — FORCES</strong> <strong>RESEARCH 02 — NOSE CONE</strong> <strong>RESEARCH 03 — FINS</strong> <strong>RESEARCH 04 — CARGO SURVIVAL</strong>. Hand each to your teacher when done.</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══ FURTHER READING (OPTIONAL) ═══ -->
+      <div class="content-section">
+        <div class="content-section-head">// FURTHER READING · OPTIONAL · GO DEEPER</div>
+        <div class="content-section-intro">
+          The four research questions above are required. <strong>These are for the curious</strong> — go further if you want to understand more about how rockets fly. Useful when you start designing in Unit 2.
+        </div>
+        <div class="research-prompt">
+          <div class="rp-num">// FOR DEEPER UNDERSTANDING</div>
+          <div class="rp-question">Three trusted resources to go beyond the basics</div>
+          <div class="rp-links">
+            <a class="rp-link" href="https://www1.grc.nasa.gov/beginners-guide-to-aeronautics/guide-to-rockets/" target="_blank" rel="noopener">NASA · BEGINNER'S GUIDE TO ROCKETS</a>
+            <a class="rp-link" href="https://www.nasa.gov/stem-content/rockets-educator-guide/" target="_blank" rel="noopener">NASA · ROCKETS EDUCATOR GUIDE</a>
+            <a class="rp-link" href="https://www.sciencebuddies.org/science-fair-projects/project-ideas/Aero_p002/aerodynamics-hydrodynamics/model-rocket-stability" target="_blank" rel="noopener">SCIENCE BUDDIES · ROCKET STABILITY</a>
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══ CARGO BRIEF ═══ -->
+      <div class="content-section">
+        <div class="content-section-head">// CARGO MANIFEST · WHAT THE COLONY NEEDS</div>
+        <div class="cargo-brief">
+          <div class="cargo-head">THE PAYLOAD</div>
+          <div class="cargo-sub">// FOUR ITEMS · ONE BOTTLE · ONE SHOT</div>
+          <p class="cargo-intro">
+            A colony's life support is failing. They need <strong>four specific things</strong>. You can't substitute. You can't skip one. You build all four — represented in craft materials — and they all have to fit inside the cut 2-liter bottle. <strong>And they all have to survive impact when the rocket lands.</strong>
+          </p>
+          <ul class="cargo-constraints">
+            <li>
+              <span class="cc-tag">SCRUBBERS</span>
+              <div><strong>CO₂ scrubbers.</strong> So they can keep breathing what they exhale. Apollo 13 made this with duct tape and a sock. You have pipe cleaners.</div>
+            </li>
+            <li>
+              <span class="cc-tag">WATER</span>
+              <div><strong>Water purifier.</strong> So they can drink. Build something that <em>could</em> filter water if it were real.</div>
+            </li>
+            <li>
+              <span class="cc-tag">OXYGEN</span>
+              <div><strong>O₂ canister.</strong> For the immediate emergency. Pressurized in real life — represent it however you want.</div>
+            </li>
+            <li>
+              <span class="cc-tag">SEEDS</span>
+              <div><strong>Seed packet.</strong> So the colony can keep going after we're gone. Watney grew potatoes on Mars. Same idea.</div>
+            </li>
+            <li>
+              <span class="cc-tag">FIT</span>
+              <div>All four items <strong>must fit inside the cut 2-liter bottle</strong> together. Nothing sticks out. Nothing rattles loose.</div>
+            </li>
+            <li>
+              <span class="cc-tag">DROP TEST</span>
+              <div>Loaded payload <strong>survives a drop from standing height onto a hard floor.</strong> If it doesn't, redesign the protection. The cargo manifest doesn't change.</div>
+            </li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- ═══ CREW SYNC ═══ -->
+      <div class="sync-gate">
+        <div class="sg-icon">⚠</div>
+        <div class="sg-body">
+          <div class="sg-head">CREW SYNC REQUIRED</div>
+          <p>Before Unit 2 unlocks — gather with your crew. <strong>Each member shows their packed payload and explains how they protected it.</strong> Your crewmates will see things you missed. Listen. Better to find the holes here than at the launch pad.</p>
+        </div>
+      </div>
+
+      <div class="unit-progress"><div class="unit-progress-fill" id="prog1"></div></div>
+    </div>
+  </div>
+
+  <!-- ═══ UNIT 2 ═══ -->
+  <div class="unit unit-u2" id="unit2">
+    <div class="unit-header" onclick="toggleUnit('unit2')">
+      <div class="unit-icon">🖥</div>
+      <div class="unit-title-group">
+        <div class="unit-number">UNIT 02</div>
+        <div class="unit-name">DESIGN · TINKERCAD</div>
+      </div>
+      <div class="unit-status">OPEN</div>
+      <div class="unit-chevron">▼</div>
+    </div>
+    <div class="unit-body">
+      <div class="unit-lore">"The fabrication bay has printers standing by. We need files. Good files. The mission doesn't fly on a bad nose cone."</div>
+
+      <div class="checklist-head">// REQUIRED COMPLETIONS</div>
+      <ul class="checklist" id="cl2">
+        <li onclick="toggleCheck(this)"><span class="check-box"></span> Tinkercad account active (Google login)</li>
+        <li onclick="toggleCheck(this)"><span class="check-box"></span> Nose cone v1 modeled — base ⌀ matches bottle, height ≤ 140mm</li>
+        <li onclick="toggleCheck(this)"><span class="check-box"></span> Nose cone has 22mm × 40mm ballast cavity in base</li>
+        <li onclick="toggleCheck(this)"><span class="check-box"></span> Fairing v1 modeled — sits at nozzle end, fin attachment surfaces</li>
+        <li onclick="toggleCheck(this)"><span class="check-box"></span> Both files submitted to Drive with correct filename format</li>
+        <li onclick="toggleCheck(this)"><span class="check-box"></span> Print routing requested (Replicator+ or Sketch)</li>
+        <li onclick="toggleCheck(this)"><span class="check-box"></span> Crew sync completed</li>
+      </ul>
+
+      <!-- ═══ TINKERCAD STARTER ═══ -->
+      <div class="content-section">
+        <div class="content-section-head">// TINKERCAD · DESIGN ENVIRONMENT</div>
+        <div class="content-section-intro">
+          Two files. Nose cone and fairing. <strong>Each one is your own work</strong> — talk to your crew, share tricks, but the file with your name on it is built by you. If you've never used Tinkercad: log in with Google, watch a crewmate, ask questions. <strong>Peer teaching is the work.</strong>
+        </div>
+        <a class="action-button" href="https://www.tinkercad.com/" target="_blank" rel="noopener">OPEN TINKERCAD</a>
+      </div>
+
+      <!-- ═══ NOSE CONE SPEC ═══ -->
+      <div class="content-section">
+        <div class="content-section-head">// PART SPEC · NOSE CONE</div>
+        <div class="spec-block">
+          <div class="spec-title">NOSE CONE</div>
+          <div class="spec-sub">// SITS ON TOP · CUTS THE AIR · HOLDS THE BALLAST</div>
+          <div class="spec-body">
+            The nose cone sits on top of the upper bottle. Its job is two things: <strong>(1) reduce drag on the way up</strong>, and <strong>(2) hold ballast at the front of the rocket so it flies straight on the way down</strong>. Without nose-end mass, your rocket tumbles. Without a smart shape, your apogee suffers. Both matter.
+          </div>
+          <ul class="spec-dims">
+            <li><strong>BASE OUTER ⌀</strong>~110 mm (must match top of upper bottle)</li>
+            <li><strong>TOTAL HEIGHT</strong>≤ 140 mm (printer ceiling)</li>
+            <li><strong>BALLAST CAVITY</strong>22 mm Ø × 40 mm deep cylinder — REQUIRED, in the base</li>
+            <li><strong>SHAPE</strong>your call — conical, ogive, parabolic, blunt — defend it</li>
+            <li><strong>WALL THICKNESS</strong>≥ 2 mm (don't print eggshell)</li>
+            <li><strong>BASE INTERFACE</strong>flat or matched to bottle top — must seat cleanly</li>
+          </ul>
+        </div>
+        <div class="content-section-intro" style="margin-top:14px;">
+          <strong>Tinkercad technique:</strong> design your cone shape, then place a 22 × 22 × 40 mm cylinder set to <em>Hole</em> at the base. Group the solid + hole together. The hole stays as a cylindrical cavity. <strong>Test it</strong> — does the cavity reach 40 mm deep into the cone? If your cone is shorter than 40 mm, you have a problem.
+        </div>
+      </div>
+
+      <!-- ═══ MASS TARGET ═══ -->
+      <div class="content-section">
+        <div class="content-section-head">// MASS TARGET · WHY YOUR ROCKET FLIES STRAIGHT</div>
+        <div class="spec-block">
+          <div class="spec-title">NOSE-END MASS</div>
+          <div class="spec-sub">// PRINTED CONE + WASHERS LOADED IN CAVITY</div>
+          <div class="spec-body">
+            A rocket flies stably when its <strong>center of gravity is forward of its center of pressure</strong>. Translation: the nose end must be heavier than the tail end. The ballast cavity exists for this reason. After your cone prints, you load steel washers into the 22 × 40 cavity until the total nose-end mass hits the target.
+          </div>
+          <ul class="spec-dims">
+            <li><strong>TOTAL TARGET</strong>120–160 g (cone + washers combined)</li>
+            <li><strong>VERIFICATION</strong>weighed on digital scale at print pickup</li>
+            <li><strong>PRINT MASS</strong>your call — pick infill to balance speed and weight</li>
+            <li><strong>BALLAST</strong>steel washers, fill the cavity until in range</li>
+            <li><strong>BELOW 120 g</strong>rocket tumbles on descent — bad data</li>
+            <li><strong>ABOVE 160 g</strong>apogee suffers — also bad data</li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- ═══ FAIRING SPEC ═══ -->
+      <div class="content-section">
+        <div class="content-section-head">// PART SPEC · FAIRING</div>
+        <div class="spec-block">
+          <div class="spec-title">FAIRING</div>
+          <div class="spec-sub">// CYLINDRICAL COLLAR · WIDEST PART OF BOTTLE · HOLDS THE FINS</div>
+          <div class="spec-body">
+            The fairing is a 3D-printed <strong>cylinder that wraps around the widest part of the bottle</strong> — the lower body, NOT the nozzle. The fins (designed in Cuttle later this week) attach to it. <strong>The nozzle must stay completely clear</strong> — that's where the launcher mounts. The fairing can extend downward toward the nozzle but cannot block access to it.
+          </div>
+          <ul class="spec-dims">
+            <li><strong>SHAPE</strong>cylinder (no taper, no transition)</li>
+            <li><strong>INNER ⌀</strong>~112 mm (110 mm bottle + 1 mm foam tape buffer on each side)</li>
+            <li><strong>HEIGHT</strong>40–60 mm typical</li>
+            <li><strong>WALL THICKNESS</strong>≥ 3 mm (this part takes load)</li>
+            <li><strong>FIN ATTACHMENT</strong>3 or 4 flat surfaces, evenly spaced on outside</li>
+            <li><strong>FIN SLOTS</strong>plan now even if you cut fins later</li>
+            <li><strong>NOZZLE CLEARANCE</strong>do NOT block bottle nozzle/threads — launcher needs access</li>
+          </ul>
+        </div>
+        <div class="content-section-intro" style="margin-top:14px;">
+          <strong>Pre-assembly required:</strong> 1 mm foam tape gets wrapped around the bottle where the fairing seats — this prevents the PLA from cracking when the bottle expands under launch pressure. Plan your inner diameter for it. The foam comes from your teacher.
+        </div>
+      </div>
+
+      <!-- ═══ STRIP CALLOUTS · UNIT 2 ═══ -->
+      <div class="content-section">
+        <div class="content-section-head">// PAPER STRIPS · UNIT 2</div>
+        <div class="strip-callout">
+          <div class="sc-icon">📄</div>
+          <div class="sc-body">
+            <div class="sc-title">// 2 PAPER STRIPS REQUIRED</div>
+            <div class="sc-labels">Get one strip for each: <strong>NOSE CONE PLAN</strong> <strong>FAIRING PLAN</strong>. On each, name <em>one design choice you made and why</em> — and <strong>name a number</strong> (a dimension, a thickness, a count). Hand each to your teacher.</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══ DESIGN INSPIRATION (Day 3 opener) ═══ -->
+      <div class="content-section">
+        <div class="content-section-head">// REFERENCE · ITERATION IS THE WORK</div>
+        <div class="content-section-intro">
+          Real engineers don't get it right the first time. Watch how Homer Hickam and his crew designed and redesigned in <em>October Sky</em>. <strong>Failure is data.</strong>
+        </div>
+        <div class="research-prompt">
+          <div class="rp-num">// CLIP · ~3 MIN</div>
+          <div class="rp-question">October Sky — Test Launches montage</div>
+          <div class="rp-links">
+            <a class="rp-link" href="https://www.youtube.com/watch?v=cP_OM5VVcSo" target="_blank" rel="noopener">YOUTUBE · TEST LAUNCHES</a>
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══ CREW SYNC ═══ -->
+      <div class="sync-gate">
+        <div class="sg-icon">⚠</div>
+        <div class="sg-body">
+          <div class="sg-head">CREW SYNC REQUIRED</div>
+          <p>Show your crew your nose cone and fairing in Tinkercad. <strong>Explain one design decision you made and one thing you're not sure about.</strong> If a crewmate spots a problem, that's the system working — fix it, log it, resubmit with a new version letter.</p>
+        </div>
+      </div>
+
+      <!-- ═══ FILE SUBMISSION ═══ -->
+      <div class="filename-gate">
+        <div class="fg-head">// FILE SUBMISSION · USE THIS EVERY TIME</div>
+        <div class="fg-row">
+          <select class="fg-select" id="fg2-type" onchange="generateFilename('fg2')">
+            <option value="">— select file type —</option>
+            <option value="nosecone">nosecone</option>
+            <option value="fairing">fairing</option>
+          </select>
+          <select class="fg-version" id="fg2-version" onchange="generateFilename('fg2')">
+            <option value="1a">version 1a</option>
+            <option value="1b">version 1b</option>
+            <option value="2a">version 2a</option>
+            <option value="2b">version 2b</option>
+            <option value="3a">version 3a</option>
+          </select>
+        </div>
+        <div class="fg-output">
+          <span id="fg2-result">select file type and version above</span>
+          <button class="fg-copy" onclick="copyFilename('fg2-result')">COPY</button>
+        </div>
+      </div>
+
+      <!-- ═══ PRINT ROUTING NOTE ═══ -->
+      <div class="content-section">
+        <div class="content-section-head">// PRINT ROUTING</div>
+        <div class="content-section-intro">
+          We have four printers. <strong>Tall/large nose cones go to Replicator+</strong> (build volume 295 × 195 × 165 mm). <strong>Shorter cones and fairings go to MakerBot Sketch</strong> (150 × 150 × 150 mm). Tell your teacher which when you submit. Wrong queue = wasted print = wasted time.
+        </div>
+      </div>
+
+      <div class="unit-progress"><div class="unit-progress-fill" id="prog2"></div></div>
+    </div>
+  </div>
+
+  <!-- ═══ UNIT 3 ═══ -->
+  <div class="unit unit-u3" id="unit3">
+    <div class="unit-header" onclick="toggleUnit('unit3')">
+      <div class="unit-icon">✂️</div>
+      <div class="unit-title-group">
+        <div class="unit-number">UNIT 03</div>
+        <div class="unit-name">DESIGN · CUTTLE + CRICUT</div>
+      </div>
+      <div class="unit-status">OPEN</div>
+      <div class="unit-chevron">▼</div>
+    </div>
+    <div class="unit-body">
+      <div class="unit-lore">"Every mission craft needs fins to fly straight. Every crew member leaves a mark. This is both."</div>
+
+      <div class="checklist-head">// REQUIRED COMPLETIONS</div>
+      <ul class="checklist" id="cl3">
+        <li onclick="toggleCheck(this)"><span class="check-box"></span> Cuttle.xyz demo watched + replicated</li>
+        <li onclick="toggleCheck(this)"><span class="check-box"></span> Fin design completed in Cuttle</li>
+        <li onclick="toggleCheck(this)"><span class="check-box"></span> Fin file submitted to shared drive</li>
+        <li onclick="toggleCheck(this)"><span class="check-box"></span> Personal sticker designed in Cricut Design Space</li>
+        <li onclick="toggleCheck(this)"><span class="check-box"></span> Sticker represents something true about you</li>
+        <li onclick="toggleCheck(this)"><span class="check-box"></span> Sticker cut, weeded, and applied</li>
+        <li onclick="toggleCheck(this)"><span class="check-box"></span> Crew sync completed</li>
+      </ul>
+
+      <div class="sync-gate">
+        <div class="sg-icon">⚠</div>
+        <div class="sg-body">
+          <div class="sg-head">CREW SYNC REQUIRED</div>
+          <p>Show your crew your fin design and your sticker. <strong>Tell them what the sticker represents.</strong> Every crew member explains theirs — no exceptions.</p>
+        </div>
+      </div>
+
+      <div class="filename-gate">
+        <div class="fg-head">// FILE SUBMISSION GENERATOR</div>
+        <div class="fg-row">
+          <select class="fg-select" id="fg3-type" onchange="generateFilename('fg3')">
+            <option value="">— select file type —</option>
+            <option value="fin">fin</option>
+            <option value="sticker">sticker</option>
+          </select>
+          <select class="fg-version" id="fg3-version" onchange="generateFilename('fg3')">
+            <option value="1a">version 1a</option>
+            <option value="1b">version 1b</option>
+            <option value="2a">version 2a</option>
+            <option value="2b">version 2b</option>
+            <option value="3a">version 3a</option>
+          </select>
+        </div>
+        <div class="fg-output">
+          <span id="fg3-result">select file type and version above</span>
+          <button class="fg-copy" onclick="copyFilename('fg3-result')">COPY</button>
+        </div>
+      </div>
+
+      <!-- ═══ STRIP CALLOUT · UNIT 3 ═══ -->
+      <div class="content-section">
+        <div class="content-section-head">// PAPER STRIPS · UNIT 3</div>
+        <div class="strip-callout">
+          <div class="sc-icon">📄</div>
+          <div class="sc-body">
+            <div class="sc-title">// 1 PAPER STRIP REQUIRED</div>
+            <div class="sc-labels">Get one strip: <strong>FIN SHAPE</strong>. Why this shape? What does it do for the rocket? Hand to your teacher.</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="placeholder-block"><p>// Cuttle.xyz tutorial · Fin shape reference · Cricut workflow · CONTENT IN PROGRESS — full content arrives by Class 4 (Mon 5/4)</p></div>
+
+      <div class="unit-progress"><div class="unit-progress-fill" id="prog3"></div></div>
+    </div>
+  </div>
+
+  <!-- ═══ UNIT 4 ═══ -->
+  <div class="unit unit-u4" id="unit4">
+    <div class="unit-header" onclick="toggleUnit('unit4')">
+      <div class="unit-icon">⚙️</div>
+      <div class="unit-title-group">
+        <div class="unit-number">UNIT 04</div>
+        <div class="unit-name">TEST ASSEMBLY</div>
+      </div>
+      <div class="unit-status">OPEN</div>
+      <div class="unit-chevron">▼</div>
+    </div>
+    <div class="unit-body">
+      <div class="unit-lore">"You will not get this right the first time. That's not a failure — that's information. Use it."</div>
+
+      <div class="checklist-head">// REQUIRED COMPLETIONS</div>
+      <ul class="checklist" id="cl4">
+        <li onclick="toggleCheck(this)"><span class="check-box"></span> All printed parts collected and inspected</li>
+        <li onclick="toggleCheck(this)"><span class="check-box"></span> Fins test-fitted to fairing</li>
+        <li onclick="toggleCheck(this)"><span class="check-box"></span> Nose cone test-fitted to top bottle</li>
+        <li onclick="toggleCheck(this)"><span class="check-box"></span> Full rocket assembled (dry — no glue yet)</li>
+        <li onclick="toggleCheck(this)"><span class="check-box"></span> Issues documented in design log</li>
+        <li onclick="toggleCheck(this)"><span class="check-box"></span> Any revised files resubmitted with new version</li>
+        <li onclick="toggleCheck(this)"><span class="check-box"></span> Crew sync completed</li>
+      </ul>
+
+      <div class="sync-gate">
+        <div class="sg-icon">⚠</div>
+        <div class="sg-body">
+          <div class="sg-head">CREW SYNC REQUIRED</div>
+          <p>Hold your assembled rocket up. <strong>Tell your crew one thing that didn't fit right and what you're doing about it.</strong> If everything fit perfectly, tell them what surprised you.</p>
+        </div>
+      </div>
+
+      <!-- ═══ STRIP CALLOUT · UNIT 4 ═══ -->
+      <div class="content-section">
+        <div class="content-section-head">// PAPER STRIPS · UNIT 4</div>
+        <div class="strip-callout">
+          <div class="sc-icon">📄</div>
+          <div class="sc-body">
+            <div class="sc-title">// 1 PAPER STRIP REQUIRED</div>
+            <div class="sc-labels">Get one strip: <strong>DRY FIT REPORT</strong>. What fit, what didn't, what you're changing — and why that change. Hand to your teacher.</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="placeholder-block"><p>// Assembly checklist detail · Iteration guidance · CONTENT IN PROGRESS — full content arrives by Class 6 (Thu 5/7)</p></div>
+
+      <div class="unit-progress"><div class="unit-progress-fill" id="prog4"></div></div>
+    </div>
+  </div>
+
+  <!-- ═══ UNIT 5 ═══ -->
+  <div class="unit unit-u5" id="unit5">
+    <div class="unit-header" onclick="toggleUnit('unit5')">
+      <div class="unit-icon">🧪</div>
+      <div class="unit-title-group">
+        <div class="unit-number">UNIT 05</div>
+        <div class="unit-name">LOW PSI SYSTEMS CHECK</div>
+      </div>
+      <div class="unit-status">OPEN</div>
+      <div class="unit-chevron">▼</div>
+    </div>
+    <div class="unit-body">
+      <div class="unit-lore">"Every real mission runs a systems check before the real thing. Low pressure. Real flight. Real data."</div>
+
+      <div class="checklist-head">// REQUIRED COMPLETIONS</div>
+      <ul class="checklist" id="cl5">
+        <li onclick="toggleCheck(this)"><span class="check-box"></span> Pre-flight checklist completed</li>
+        <li onclick="toggleCheck(this)"><span class="check-box"></span> Low PSI launch completed</li>
+        <li onclick="toggleCheck(this)"><span class="check-box"></span> Flight observed and documented</li>
+        <li onclick="toggleCheck(this)"><span class="check-box"></span> Failure points identified (or confirmed none)</li>
+        <li onclick="toggleCheck(this)"><span class="check-box"></span> Design log entry #3 — what did the flight tell you?</li>
+        <li onclick="toggleCheck(this)"><span class="check-box"></span> Crew sync completed</li>
+      </ul>
+
+      <div class="sync-gate">
+        <div class="sg-icon">⚠</div>
+        <div class="sg-body">
+          <div class="sg-head">CREW SYNC REQUIRED</div>
+          <p>After your test flight — <strong>tell the crew what you saw.</strong> Did it fly straight? Did anything come loose? Did the fairing hold? Real data only. No guessing.</p>
+        </div>
+      </div>
+
+      <!-- ═══ STRIP CALLOUT · UNIT 5 ═══ -->
+      <div class="content-section">
+        <div class="content-section-head">// PAPER STRIPS · UNIT 5</div>
+        <div class="strip-callout">
+          <div class="sc-icon">📄</div>
+          <div class="sc-body">
+            <div class="sc-title">// 1 PAPER STRIP REQUIRED — AFTER PRACTICE LAUNCH</div>
+            <div class="sc-labels">Get one strip: <strong>PRACTICE LAUNCH OBSERVATION</strong>. What actually happened, and what it tells you. Hand to your teacher.</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="placeholder-block"><p>// Test flight observation sheet · CONTENT IN PROGRESS — full content arrives by Class 7 (Mon 5/11)</p></div>
+
+      <div class="unit-progress"><div class="unit-progress-fill" id="prog5"></div></div>
+    </div>
+  </div>
+
+  <!-- ═══ UNIT 6 ═══ -->
+  <div class="unit unit-u6" id="unit6">
+    <div class="unit-header" onclick="toggleUnit('unit6')">
+      <div class="unit-icon">🔧</div>
+      <div class="unit-title-group">
+        <div class="unit-number">UNIT 06</div>
+        <div class="unit-name">FINAL ASSEMBLY</div>
+      </div>
+      <div class="unit-status">OPEN</div>
+      <div class="unit-chevron">▼</div>
+    </div>
+    <div class="unit-body">
+      <div class="unit-lore">"This is the one that flies for real. Take your time. Do it right. You don't get another."</div>
+
+      <div class="checklist-head">// REQUIRED COMPLETIONS</div>
+      <ul class="checklist" id="cl6">
+        <li onclick="toggleCheck(this)"><span class="check-box"></span> All iterations complete — final parts in hand</li>
+        <li onclick="toggleCheck(this)"><span class="check-box"></span> Fairing bonded to bottle</li>
+        <li onclick="toggleCheck(this)"><span class="check-box"></span> Fins bonded to fairing</li>
+        <li onclick="toggleCheck(this)"><span class="check-box"></span> Nose cone secured to top bottle</li>
+        <li onclick="toggleCheck(this)"><span class="check-box"></span> Payload loaded and secured</li>
+        <li onclick="toggleCheck(this)"><span class="check-box"></span> Sticker applied</li>
+        <li onclick="toggleCheck(this)"><span class="check-box"></span> Pre-flight inspection signed off</li>
+        <li onclick="toggleCheck(this)"><span class="check-box"></span> Crew sync — final</li>
+      </ul>
+
+      <div class="sync-gate">
+        <div class="sg-icon">⚠</div>
+        <div class="sg-body">
+          <div class="sg-head">FINAL CREW SYNC</div>
+          <p><strong>Every crew member presents their rocket to the group.</strong> Name it. Describe the payload. Say one thing you're proud of. Then it goes to the launch pad.</p>
+        </div>
+      </div>
+
+      <!-- ═══ STRIP CALLOUT · UNIT 6 ═══ -->
+      <div class="content-section">
+        <div class="content-section-head">// PAPER STRIPS · UNIT 6</div>
+        <div class="strip-callout">
+          <div class="sc-icon">📄</div>
+          <div class="sc-body">
+            <div class="sc-title">// 1 PAPER STRIP REQUIRED</div>
+            <div class="sc-labels">Get one strip: <strong>POST-FLIGHT FIX</strong>. What you're changing for the real launch and why this fix addresses what you saw. Hand to your teacher.</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="placeholder-block"><p>// Final assembly checklist detail · CONTENT IN PROGRESS — full content arrives by Class 9 (Thu 5/14)</p></div>
+
+      <div class="unit-progress"><div class="unit-progress-fill" id="prog6"></div></div>
+    </div>
+  </div>
+
+  <!-- ═══ UNIT 7 — LAUNCH ═══ -->
+  <div class="unit unit-u7" id="unit7">
+    <div class="unit-header" onclick="toggleUnit('unit7')">
+      <div class="unit-icon">🚀</div>
+      <div class="unit-title-group">
+        <div class="unit-number">LAUNCH DAY</div>
+        <div class="unit-name">ONE SHOT · MAY 20 · 11:00 AM</div>
+      </div>
+      <div class="unit-status">OPEN</div>
+      <div class="unit-chevron">▼</div>
+    </div>
+    <div class="unit-body">
+      <div class="unit-lore">"The window opens once. Everything you've built, every decision you've made, every iteration — it comes down to this. The mission flies or it doesn't. Either way, you did the work."</div>
+
+      <!-- ═══ RANGE PROTOCOL ═══ -->
+      <div class="content-section">
+        <div class="content-section-head">// RANGE PROTOCOL · READ THIS BEFORE LAUNCH DAY</div>
+        <div class="content-section-intro">
+          The launch field is taped off. <strong>Stay behind the tape unless your teacher calls you in.</strong> These rules exist because rockets are projectiles. They aren't optional.
+        </div>
+        <div class="spec-block">
+          <div class="spec-title">RANGE RULES</div>
+          <div class="spec-sub">// EVERYONE · EVERY LAUNCH · NO EXCEPTIONS</div>
+          <ul class="spec-dims">
+            <li><strong>STAY BEHIND TAPE</strong>spectators outside the rectangle, period</li>
+            <li><strong>"ROCKET UP"</strong>called at every launch — eyes up, watch where it goes</li>
+            <li><strong>NO CROSSING</strong>nobody crosses the tape until "RANGE CLEAR" is called</li>
+            <li><strong>ONE AT A TIME</strong>only one rocket in the air, ever</li>
+            <li><strong>WIND CHECK</strong>if wind blows back toward launch zone — we wait</li>
+            <li><strong>FAILED LAUNCH</strong>depressurize fully before approaching the launcher</li>
+            <li><strong>RECOVERY</strong>retrieving rockets is a teacher call, not yours</li>
+            <li><strong>WOODS = OK</strong>if a rocket lands in the woods, leave it. We'll get it.</li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- ═══ LAUNCH DAY CHECKLIST ═══ -->
+      <div class="content-section">
+        <div class="content-section-head">// LAUNCH DAY · WHAT YOU BRING</div>
+        <div class="content-section-intro">
+          Show up with your rocket assembled, payload loaded, and washers seated in the cavity. <strong>Don't bring a project.</strong> Bring a rocket that's ready to fly.
+        </div>
+        <ul class="spec-dims">
+          <li><strong>ROCKET</strong>fully assembled, fairing on, fins set, stickers applied</li>
+          <li><strong>NOSE CONE</strong>seated firmly, washers loaded, mass verified</li>
+          <li><strong>PAYLOAD</strong>all four items packed inside the cut bottle</li>
+          <li><strong>YOUR HEAD</strong>clear, ready to watch and learn</li>
+        </ul>
+      </div>
+
+      <div class="placeholder-block"><p>// Launch day brief · CONTENT IN PROGRESS — full content arrives by Class 9 (Thu 5/14)</p></div>
+
+      <div class="unit-progress"><div class="unit-progress-fill" id="prog7"></div></div>
+    </div>
+  </div>
+
+  <div class="terminal-footer">
+    <span class="tf-line">// PROJECT ASCENT · MISSION TERMINAL</span>
+    <span class="tf-sep">·</span>
+    <span class="tf-line">VER 2026-04-26</span>
+    <span class="tf-sep">·</span>
+    <span class="tf-line">KENTS HILL DIGITAL DESIGN</span>
+  </div>
+
+</div><!-- end .page -->
+</div><!-- end #mainTerminal -->
+
+<script>
+// ═══════════════════════════════════
+// DUAL COUNTDOWN SYSTEM
+// ═══════════════════════════════════
+
+// --- SYSTEMS CHECK thresholds (zero = 5/12 12:45 PM ET) ---
+const SC_ZERO    = new Date('2026-05-12T12:45:00-04:00').getTime();
+const SC_YELLOW  = new Date('2026-05-01T12:50:00-04:00').getTime();
+const SC_RED     = new Date('2026-05-08T12:55:00-04:00').getTime();
+const SC_TENTHS  = new Date('2026-05-12T08:55:00-04:00').getTime();
+const SC_FLASH   = new Date('2026-05-11T10:55:00-04:00').getTime();
+
+// --- LAUNCH WINDOW thresholds (zero = 5/20 11:00 AM ET) ---
+const LW_ZERO    = new Date('2026-05-20T11:00:00-04:00').getTime();
+const LW_YELLOW  = new Date('2026-05-11T10:30:00-04:00').getTime();
+const LW_RED     = new Date('2026-05-14T08:45:00-04:00').getTime();
+const LW_TENTHS  = new Date('2026-05-14T08:55:00-04:00').getTime();
+const LW_FLASH   = new Date('2026-05-14T12:30:00-04:00').getTime();
+
+// ═══════════════════════════════════
+// CLASS HOURS — siren gating
+// Format: [start, end] timestamps in ET
+// ═══════════════════════════════════
+const CLASS_HOURS = [
+  // Day 1 — Mon 4/27 12:35 PM – 1:15 PM
+  ['2026-04-27T12:35:00-04:00','2026-04-27T13:15:00-04:00'],
+  // Day 2 — Tue 4/28 10:35 AM – 11:50 AM
+  ['2026-04-28T10:35:00-04:00','2026-04-28T11:50:00-04:00'],
+  // Day 3 — Thu 4/30 8:30 AM – 9:45 AM
+  ['2026-04-30T08:30:00-04:00','2026-04-30T09:45:00-04:00'],
+  // Day 4 — Mon 5/4 10:30 AM – 11:10 AM
+  ['2026-05-04T10:30:00-04:00','2026-05-04T11:10:00-04:00'],
+  // Day 5 — Tue 5/5 12:35 PM – 1:50 PM
+  ['2026-05-05T12:35:00-04:00','2026-05-05T13:50:00-04:00'],
+  // Day 6 — Thu 5/7 8:30 AM – 9:45 AM
+  ['2026-05-07T08:30:00-04:00','2026-05-07T09:45:00-04:00'],
+  // Day 7 — Mon 5/11 10:30 AM – 11:10 AM
+  ['2026-05-11T10:30:00-04:00','2026-05-11T11:10:00-04:00'],
+  // Day 8 — Tue 5/12 12:35 PM – 1:35 PM (Systems Check)
+  ['2026-05-12T12:35:00-04:00','2026-05-12T13:35:00-04:00'],
+  // Day 9 — Thu 5/14 12:30 PM – 1:45 PM
+  ['2026-05-14T12:30:00-04:00','2026-05-14T13:45:00-04:00'],
+  // Launch — Wed 5/20 11:00 AM – 12:00 PM
+  ['2026-05-20T11:00:00-04:00','2026-05-20T12:00:00-04:00'],
+].map(([s,e]) => [new Date(s).getTime(), new Date(e).getTime()]);
+
+function inClassNow() {
+  const now = Date.now();
+  return CLASS_HOURS.some(([s,e]) => now >= s && now <= e);
+}
+
+// ═══════════════════════════════════
+// SIREN EVENTS — every state change, queued or live
+// Each event has a unique key (for localStorage tracking)
+// ═══════════════════════════════════
+const SIREN_EVENTS = [
+  // Systems Check timer events
+  { key: 'sc_yellow',   ts: SC_YELLOW,  label: 'SYSTEMS CHECK · YELLOW ALERT' },
+  { key: 'sc_red',      ts: SC_RED,     label: 'SYSTEMS CHECK · RED ALERT' },
+  { key: 'sc_tenths',   ts: SC_TENTHS,  label: 'SYSTEMS CHECK · FINAL HOURS' },
+  { key: 'sc_flashing', ts: SC_FLASH,   label: 'SYSTEMS CHECK · IMMINENT' },
+  { key: 'sc_zero',     ts: SC_ZERO,    label: 'SYSTEMS CHECK · OPEN' },
+  // Launch Window timer events
+  { key: 'lw_yellow',   ts: LW_YELLOW,  label: 'LAUNCH WINDOW · YELLOW ALERT' },
+  { key: 'lw_red',      ts: LW_RED,     label: 'LAUNCH WINDOW · RED ALERT' },
+  { key: 'lw_tenths',   ts: LW_TENTHS,  label: 'LAUNCH WINDOW · FINAL HOURS' },
+  { key: 'lw_flashing', ts: LW_FLASH,   label: 'LAUNCH WINDOW · IMMINENT' },
+  { key: 'lw_zero',     ts: LW_ZERO,    label: 'LAUNCH WINDOW · OPEN' },
+];
+
+let sirenPlaying = false;
+let userInteracted = false; // browsers block audio until user clicks
+
+// Mark events that happened before this device first saw them as "spent"
+// so a fresh-install device on Day 5 doesn't get bombarded with all past events.
+// We only fire the MOST RECENT unfired event when class is in session.
+function getFiredEvents() {
+  try { return JSON.parse(localStorage.getItem('pa_v1_sirens_fired') || '{}'); }
+  catch(e) { return {}; }
+}
+function markFired(key) {
+  const fired = getFiredEvents();
+  fired[key] = Date.now();
+  localStorage.setItem('pa_v1_sirens_fired', JSON.stringify(fired));
+}
+
+function maybePlayDeferredSiren() {
+  // Only fire during class hours
+  if (!inClassNow()) return;
+  if (!userInteracted) return; // wait for first user interaction
+  const fired = getFiredEvents();
+  const now = Date.now();
+  // Find all events that have happened (ts <= now) but haven't fired yet
+  const pending = SIREN_EVENTS.filter(ev => ev.ts <= now && !fired[ev.key]);
+  if (pending.length === 0) return;
+  // Fire only the MOST RECENT unfired event; mark all earlier ones as spent silently
+  pending.sort((a,b) => b.ts - a.ts);
+  const toFire = pending[0];
+  // Mark all pending as fired (most recent gets the siren, others silently consumed)
+  pending.forEach(ev => markFired(ev.key));
+  playSiren(toFire.label);
+}
+
+function formatTime(diff, showTenths) {
+  if (diff <= 0) return null;
+  const days  = Math.floor(diff / 86400000);
+  const hours = Math.floor((diff % 86400000) / 3600000);
+  const mins  = Math.floor((diff % 3600000)  / 60000);
+  const secs  = Math.floor((diff % 60000)    / 1000);
+  const tenths = Math.floor((diff % 1000)    / 100);
+  const u = (s) => `<span class="tb-unit">${s}</span>`;
+  const base = `${days}${u('d')} ${String(hours).padStart(2,'0')}${u('h')} ${String(mins).padStart(2,'0')}${u('m')} ${String(secs).padStart(2,'0')}${u('s')}`;
+  return showTenths
+    ? `${days}${u('d')} ${String(hours).padStart(2,'0')}${u('h')} ${String(mins).padStart(2,'0')}${u('m')} ${String(secs).padStart(2,'0')}.${tenths}${u('s')}`
+    : base;
+}
+
+function getTimerState(now, zero, yellow, red, tenths, flash) {
+  if (now >= zero)   return 'zero';
+  if (now >= flash)  return 'flashing';
+  if (now >= tenths) return 'red-tenths';
+  if (now >= red)    return 'red';
+  if (now >= yellow) return 'yellow';
+  return 'green';
+}
+
+function playSiren(label) {
+  if (sirenPlaying) return;
+  sirenPlaying = true;
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const duration = 2.5;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(220, ctx.currentTime);
+    osc.frequency.linearRampToValueAtTime(880, ctx.currentTime + 0.4);
+    osc.frequency.linearRampToValueAtTime(440, ctx.currentTime + 0.8);
+    osc.frequency.linearRampToValueAtTime(1100, ctx.currentTime + 1.2);
+    osc.frequency.linearRampToValueAtTime(330, ctx.currentTime + 1.6);
+    osc.frequency.linearRampToValueAtTime(990, ctx.currentTime + 2.0);
+    osc.frequency.linearRampToValueAtTime(220, ctx.currentTime + 2.5);
+    gain.gain.setValueAtTime(0, ctx.currentTime);
+    gain.gain.linearRampToValueAtTime(0.4, ctx.currentTime + 0.05);
+    gain.gain.setValueAtTime(0.4, ctx.currentTime + 2.3);
+    gain.gain.linearRampToValueAtTime(0, ctx.currentTime + 2.5);
+    osc.start(ctx.currentTime);
+    osc.stop(ctx.currentTime + duration);
+    setTimeout(() => { sirenPlaying = false; }, (duration + 0.5) * 1000);
+  } catch(e) {
+    sirenPlaying = false;
+  }
+}
+
+// ═══════════════════════════════════
+// CHIME — Zelda secret-discovered, played on phase/unit unlocks
+// ═══════════════════════════════════
+let chimePlaying = false;
+function playChime() {
+  if (chimePlaying) return;
+  chimePlaying = true;
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    // Zelda "secret discovered": G, F#, D#, A, G#, C, B, F#, B (approx)
+    // Famous version uses: D♭5, A♭4, G4, A♭4, D♭5, F5, C6 (a 7-note ascending pattern)
+    // Simplified to recognizable 6-note chime
+    const notes = [
+      { freq: 698.46, time: 0.00, dur: 0.16 },  // F5
+      { freq: 880.00, time: 0.16, dur: 0.16 },  // A5
+      { freq: 1046.5, time: 0.32, dur: 0.16 },  // C6
+      { freq: 880.00, time: 0.48, dur: 0.16 },  // A5
+      { freq: 698.46, time: 0.64, dur: 0.16 },  // F5
+      { freq: 1046.5, time: 0.80, dur: 0.50 },  // C6 hold
+    ];
+    const startTime = ctx.currentTime;
+    notes.forEach(n => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.type = 'triangle';  // softer, bell-like
+      osc.frequency.value = n.freq;
+      gain.gain.setValueAtTime(0, startTime + n.time);
+      gain.gain.linearRampToValueAtTime(0.18, startTime + n.time + 0.01);
+      gain.gain.exponentialRampToValueAtTime(0.001, startTime + n.time + n.dur);
+      osc.start(startTime + n.time);
+      osc.stop(startTime + n.time + n.dur);
+    });
+    setTimeout(() => { chimePlaying = false; }, 1800);
+  } catch(e) {
+    chimePlaying = false;
+  }
+}
+
+// ═══════════════════════════════════
+// CHIME EVENTS — phase changes + unit unlocks
+// One chime per event per device. Class-hours gated. Deferred on open.
+// ═══════════════════════════════════
+function getFiredChimes() {
+  try { return JSON.parse(localStorage.getItem('pa_v1_chimes_fired') || '{}'); }
+  catch(e) { return {}; }
+}
+function markChimeFired(key) {
+  const fired = getFiredChimes();
+  fired[key] = Date.now();
+  localStorage.setItem('pa_v1_chimes_fired', JSON.stringify(fired));
+}
+
+function getChimeEvents() {
+  // Generated dynamically from PHASES + UNIT_UNLOCKS
+  const events = [];
+  try {
+    PHASES.forEach(p => events.push({ key: 'phase_' + p.tag.replace(/\s/g,'_'), ts: p.ts }));
+  } catch(e) {}
+  try {
+    UNIT_UNLOCKS.forEach(u => events.push({ key: 'unlock_' + u.id, ts: u.ts }));
+  } catch(e) {}
+  return events;
+}
+
+function maybePlayDeferredChime() {
+  if (!inClassNow()) return;
+  if (!userInteracted) return;
+  const fired = getFiredChimes();
+  const now = Date.now();
+  const pending = getChimeEvents().filter(ev => ev.ts <= now && !fired[ev.key]);
+  if (pending.length === 0) return;
+  // Most-recent unfired wins; mark all earlier as silently consumed
+  pending.sort((a,b) => b.ts - a.ts);
+  pending.forEach(ev => markChimeFired(ev.key));
+  playChime();
+}
+
+// Live chime check (during class, on transition)
+let prevPhaseTag = null;
+let prevUnitLockState = {};
+function checkLiveChimes() {
+  if (!inClassNow() || !userInteracted) return;
+  // Phase change
+  let phase = null;
+  try { phase = getCurrentPhase(); } catch(e) {}
+  const tag = phase ? phase.tag : null;
+  if (prevPhaseTag !== null && tag !== null && prevPhaseTag !== tag) {
+    const key = 'phase_' + tag.replace(/\s/g,'_');
+    if (!getFiredChimes()[key]) {
+      markChimeFired(key);
+      playChime();
+    }
+  }
+  prevPhaseTag = tag;
+  // Unit unlock — track each unit's locked state, fire chime on lock→unlock transition
+  try {
+    const now = Date.now();
+    UNIT_UNLOCKS.forEach(u => {
+      const isLocked = now < u.ts;
+      const prev = prevUnitLockState[u.id];
+      if (prev === true && isLocked === false) {
+        // just unlocked
+        const key = 'unlock_' + u.id;
+        if (!getFiredChimes()[key]) {
+          markChimeFired(key);
+          playChime();
+        }
+      }
+      prevUnitLockState[u.id] = isLocked;
+    });
+  } catch(e) {}
+}
+
+// Watch for live state changes during class — fire siren immediately if in class
+let prevStateA = null;
+let prevStateB = null;
+
+function updateCountdown(rowId, countId, zero, yellow, red, tenthsT, flash, zeroText, prevStateKey) {
+  const now = Date.now();
+  const diff = zero - now;
+  const row = document.getElementById(rowId);
+  const count = document.getElementById(countId);
+  if (!row || !count) return;
+
+  const state = getTimerState(now, zero, yellow, red, tenthsT, flash);
+  const showTenths = (state === 'red-tenths' || state === 'flashing' || state === 'zero');
+
+  // Live siren check on state change (during class only)
+  if (prevStateKey === 'A') {
+    if (prevStateA !== null && prevStateA !== state && inClassNow() && userInteracted) {
+      // Match this state change to an event key and fire if unfired
+      const eventKeyMap = {
+        'yellow': 'sc_yellow', 'red': 'sc_red',
+        'red-tenths': 'sc_tenths', 'flashing': 'sc_flashing', 'zero': 'sc_zero'
+      };
+      const ek = eventKeyMap[state];
+      if (ek && !getFiredEvents()[ek]) {
+        markFired(ek);
+        playSiren();
+      }
+    }
+    prevStateA = state;
+  } else {
+    if (prevStateB !== null && prevStateB !== state && inClassNow() && userInteracted) {
+      const eventKeyMap = {
+        'yellow': 'lw_yellow', 'red': 'lw_red',
+        'red-tenths': 'lw_tenths', 'flashing': 'lw_flashing', 'zero': 'lw_zero'
+      };
+      const ek = eventKeyMap[state];
+      if (ek && !getFiredEvents()[ek]) {
+        markFired(ek);
+        playSiren();
+      }
+    }
+    prevStateB = state;
+  }
+
+  // Set display class
+  row.className = 'timer-row';
+  if (state === 'green')      row.classList.add('green');
+  if (state === 'yellow')     row.classList.add('yellow');
+  if (state === 'red')        row.classList.add('red');
+  if (state === 'red-tenths') row.classList.add('red');
+  if (state === 'flashing')   row.classList.add('red', 'flashing');
+  if (state === 'zero')       row.classList.add('red', 'flashing');
+
+  // Set text (HTML so unit spans render)
+  if (state === 'zero') {
+    count.innerHTML = zeroText;
+  } else {
+    const formatted = formatTime(diff, showTenths);
+    count.innerHTML = formatted || zeroText;
+  }
+}
+
+// ═══════════════════════════════════
+// PHASE INDICATOR — 6 phases scheduled by date
+// Visible only during active phase
+// ═══════════════════════════════════
+const PHASES = [
+  { tag: 'PAYLOAD DESIGN',   start: '2026-04-27T12:35:00-04:00' },
+  { tag: 'SYSTEMS DESIGN',   start: '2026-04-28T13:00:00-04:00' },
+  { tag: 'PRE-FLIGHT',       start: '2026-05-07T09:45:00-04:00' },
+  { tag: 'FLIGHT TEST DATA', start: '2026-05-12T12:45:00-04:00' },
+  { tag: 'LAUNCH PREP',      start: '2026-05-14T12:30:00-04:00' },
+  { tag: 'LAUNCH READY',     start: '2026-05-20T10:30:00-04:00' },
+].map(p => ({ ...p, ts: new Date(p.start).getTime() }));
+
+function getCurrentPhase() {
+  const now = Date.now();
+  let active = null;
+  for (const p of PHASES) {
+    if (now >= p.ts) active = p;
+    else break;
+  }
+  return active;
+}
+
+function updatePhaseStrip() {
+  const strip = document.getElementById('phaseStrip');
+  const tag = document.getElementById('phaseTag');
+  if (!strip || !tag) return;
+  const phase = getCurrentPhase();
+  if (phase) {
+    strip.style.display = 'block';
+    tag.textContent = phase.tag;
+  } else {
+    strip.style.display = 'none';
+  }
+}
+
+function tickAll() {
+  updateCountdown('timerRowA','countdownA', SC_ZERO, SC_YELLOW, SC_RED, SC_TENTHS, SC_FLASH, 'SYSTEMS CHECK OPEN', 'A');
+  updateCountdown('timerRowB','countdownB', LW_ZERO, LW_YELLOW, LW_RED, LW_TENTHS, LW_FLASH, 'LAUNCH WINDOW OPEN', 'B');
+  updatePhaseStrip();
+  updateUnitLocks();
+  checkLiveChimes();
+}
+
+// User interaction unlocks audio + checks for deferred sirens + chimes
+function onFirstInteraction() {
+  if (userInteracted) return;
+  userInteracted = true;
+  setTimeout(maybePlayDeferredSiren, 500);
+  setTimeout(maybePlayDeferredChime, 700);
+}
+['click','keydown','touchstart'].forEach(ev =>
+  document.addEventListener(ev, onFirstInteraction, { once: false, passive: true })
+);
+
+// ═══════════════════════════════════
+// BOOT / NAME GATE
+// ═══════════════════════════════════
+let crewName = '';
+
+function initTerminal() {
+  const input = document.getElementById('crewNameInput').value.trim();
+  if (!input) {
+    document.getElementById('crewNameInput').focus();
+    document.getElementById('crewNameInput').style.borderColor = 'var(--red)';
+    return;
+  }
+  crewName = input.charAt(0).toUpperCase() + input.slice(1).toLowerCase();
+  localStorage.setItem('pa_v1_crewName', crewName);
+  launchTerminal();
+}
+
+function launchTerminal() {
+  document.getElementById('bootScreen').style.display = 'none';
+  const terminal = document.getElementById('mainTerminal');
+  terminal.style.display = 'block';
+  terminal.classList.add('visible');
+  document.getElementById('crewNameDisplay').textContent = crewName.toUpperCase();
+  restoreCheckboxes();
+  ['fg2','fg3'].forEach(generateFilename);
+}
+
+document.getElementById('crewNameInput').addEventListener('keydown', function(e) {
+  if (e.key === 'Enter') initTerminal();
+  this.style.borderColor = '';
+});
+
+// ── AUTO-LOGIN if name already saved ──
+window.addEventListener('DOMContentLoaded', () => {
+  const saved = localStorage.getItem('pa_v1_crewName');
+  if (saved) {
+    crewName = saved;
+    launchTerminal();
+  }
+});
+
+// ═══════════════════════════════════
+// UNIT LOCKS — date-based unlock schedule
+// ═══════════════════════════════════
+const UNIT_UNLOCKS = [
+  { id: 'unit1', date: '2026-04-27T12:35:00-04:00', summary: 'Research · Cargo Manifest' },
+  { id: 'unit2', date: '2026-04-28T13:00:00-04:00', summary: 'Tinkercad design — nose cone + fairing' },
+  { id: 'unit3', date: '2026-05-04T10:30:00-04:00', summary: 'Cuttle.xyz fins · Cricut stickers' },
+  { id: 'unit4', date: '2026-05-07T08:30:00-04:00', summary: 'Test assembly · dry fit all parts' },
+  { id: 'unit5', date: '2026-05-11T10:30:00-04:00', summary: 'Final assembly · pre-launch checks' },
+  { id: 'unit6', date: '2026-05-12T13:35:00-04:00', summary: 'Practice launch · flight test data' },
+  { id: 'unit7', date: '2026-05-14T12:30:00-04:00', summary: 'Launch prep · final fixes' },
+].map(u => ({ ...u, ts: new Date(u.date).getTime() }));
+
+function fmtUnlockDate(ts) {
+  const d = new Date(ts);
+  const days = ['SUN','MON','TUE','WED','THU','FRI','SAT'];
+  const day = days[d.getDay()];
+  const m = d.getMonth() + 1;
+  const date = d.getDate();
+  let h = d.getHours();
+  const min = String(d.getMinutes()).padStart(2,'0');
+  const ampm = h >= 12 ? 'PM' : 'AM';
+  h = h % 12; if (h === 0) h = 12;
+  return `${day} ${m}/${date} · ${h}:${min} ${ampm}`;
+}
+
+function updateUnitLocks() {
+  const now = Date.now();
+  UNIT_UNLOCKS.forEach(u => {
+    const unit = document.getElementById(u.id);
+    if (!unit) return;
+    const isLocked = now < u.ts;
+    if (isLocked) {
+      unit.classList.add('locked');
+      unit.classList.remove('open');
+      // inject summary if not present
+      let summary = unit.querySelector('.unit-locked-summary');
+      if (!summary) {
+        summary = document.createElement('div');
+        summary.className = 'unit-locked-summary';
+        summary.innerHTML =
+          `<div class="uls-icon">🔒</div>` +
+          `<div class="uls-body">` +
+            `<div class="uls-summary">${u.summary}</div>` +
+            `<div class="uls-unlock">// LOCKED · UNLOCKS WHEN THE MISSION IS READY</div>` +
+          `</div>`;
+        unit.appendChild(summary);
+      }
+      // update status badge
+      const status = unit.querySelector('.unit-status');
+      if (status) status.textContent = 'LOCKED';
+    } else {
+      unit.classList.remove('locked');
+      const summary = unit.querySelector('.unit-locked-summary');
+      if (summary) summary.remove();
+      const status = unit.querySelector('.unit-status');
+      if (status && status.textContent === 'LOCKED') status.textContent = 'OPEN';
+    }
+  });
+}
+
+// ═══════════════════════════════════
+// UNIT ACCORDION (lock-aware)
+// ═══════════════════════════════════
+function toggleUnit(id) {
+  const unit = document.getElementById(id);
+  if (unit.classList.contains('locked')) return;
+  unit.classList.toggle('open');
+}
+
+// ═══════════════════════════════════
+// CHECKLIST
+// ═══════════════════════════════════
+function toggleCheck(li) {
+  li.classList.toggle('checked');
+  li.querySelector('.check-box').textContent = li.classList.contains('checked') ? '✓' : '';
+  updateProgress(li.closest('.unit-body'));
+  saveCheckboxes();
+}
+
+function updateProgress(unitBody) {
+  const cl = unitBody.querySelector('.checklist');
+  if (!cl) return;
+  const all = cl.querySelectorAll('li').length;
+  const done = cl.querySelectorAll('li.checked').length;
+  const bar = unitBody.querySelector('.unit-progress-fill');
+  if (bar) bar.style.width = (done / all * 100) + '%';
+}
+
+function saveCheckboxes() {
+  const state = {};
+  document.querySelectorAll('.checklist').forEach(cl => {
+    state[cl.id] = [];
+    cl.querySelectorAll('li').forEach((li, i) => {
+      state[cl.id][i] = li.classList.contains('checked');
+    });
+  });
+  localStorage.setItem('pa_v1_checkboxes', JSON.stringify(state));
+}
+
+function restoreCheckboxes() {
+  const saved = localStorage.getItem('pa_v1_checkboxes');
+  if (!saved) return;
+  const state = JSON.parse(saved);
+  document.querySelectorAll('.checklist').forEach(cl => {
+    if (!state[cl.id]) return;
+    cl.querySelectorAll('li').forEach((li, i) => {
+      if (state[cl.id][i]) {
+        li.classList.add('checked');
+        li.querySelector('.check-box').textContent = '✓';
+      }
+    });
+    updateProgress(cl.closest('.unit-body'));
+  });
+}
+
+// ═══════════════════════════════════
+// FILENAME GENERATOR
+// ═══════════════════════════════════
+function getDate() {
+  const d = new Date();
+  return `${d.getMonth()+1}/${d.getDate()}`;
+}
+
+function generateFilename(prefix) {
+  const typeEl = document.getElementById(prefix + '-type');
+  const verEl = document.getElementById(prefix + '-version');
+  const resultEl = document.getElementById(prefix + '-result');
+  if (!typeEl || !verEl || !resultEl) return;
+
+  const type = typeEl.value;
+  const ver = verEl.value;
+
+  if (!type || !crewName) {
+    resultEl.textContent = 'enter your name at login first';
+    return;
+  }
+
+  resultEl.textContent = `${crewName}_${type}_${getDate()}_${ver}`;
+}
+
+function copyFilename(id) {
+  const text = document.getElementById(id).textContent;
+  if (text.includes('select') || text.includes('enter')) return;
+  navigator.clipboard.writeText(text).then(() => {
+    const btn = document.querySelector(`[onclick="copyFilename('${id}')"]`);
+    const orig = btn.textContent;
+    btn.textContent = 'COPIED ✓';
+    btn.style.color = 'var(--green)';
+    btn.style.borderColor = 'var(--green)';
+    setTimeout(() => {
+      btn.textContent = orig;
+      btn.style.color = '';
+      btn.style.borderColor = '';
+    }, 2000);
+  });
+}
+
+// ═══════════════════════════════════
+// KICKOFF — must be after all const declarations
+// ═══════════════════════════════════
+setInterval(tickAll, 100);
+tickAll();
+</script>
+</body>
+</html>
